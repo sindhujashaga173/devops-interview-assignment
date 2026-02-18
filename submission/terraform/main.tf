@@ -1,36 +1,115 @@
-# main.tf — EKS Cluster and Node Groups
-#
-# TASK: Complete this file to create a production-grade EKS cluster.
-# Requirements:
-#   - EKS cluster with proper IAM roles
-#   - At least two node groups: one for general workloads, one for GPU inference
-#   - Proper subnet placement (private subnets for nodes)
-#   - Reference security groups from networking.tf
 
-# --- EKS Cluster IAM Role ---
-# TODO: Create an IAM role for the EKS cluster with the AmazonEKSClusterPolicy
+resource "aws_iam_role" "eks_cluster" {
+  name = "${var.cluster_name}-cluster-role"
 
-# --- EKS Cluster ---
-# TODO: Create the EKS cluster resource
-#   - Place in private subnets
-#   - Enable cluster logging (api, audit, authenticator)
-#   - Reference the cluster IAM role
+  assume_role_policy = data.aws_iam_policy_document.eks_assume.json
+}
 
-# --- Node Group IAM Role ---
-# TODO: Create an IAM role for EKS node groups with:
-#   - AmazonEKSWorkerNodePolicy
-#   - AmazonEKS_CNI_Policy
-#   - AmazonEC2ContainerRegistryReadOnly
+data "aws_iam_policy_document" "eks_assume" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["eks.amazonaws.com"]
+    }
+    actions = ["sts:AssumeRole"]
+  }
+}
 
-# --- General Node Group ---
-# TODO: Create a managed node group for general workloads
-#   - Instance type(s) appropriate for general workloads
-#   - Scaling configuration (min, max, desired)
-#   - Place in private subnets
+resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
+  role       = aws_iam_role.eks_cluster.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+resource "aws_eks_cluster" "main" {
+  name     = var.cluster_name
+  role_arn = aws_iam_role.eks_cluster.arn
+  version  = "1.29"
 
-# --- GPU Node Group ---
-# TODO: Create a managed node group for GPU inference
-#   - GPU instance type (e.g., g4dn.xlarge)
-#   - Appropriate scaling
-#   - Taints for GPU workload isolation
-#   - Place in private subnets
+  vpc_config {
+    subnet_ids = [
+      aws_subnet.private_a.id,
+      aws_subnet.private_b.id
+    ]
+  }
+
+  enabled_cluster_log_types = [
+    "api",
+    "audit",
+    "authenticator"
+  ]
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_policy
+  ]
+}
+resource "aws_iam_role" "eks_nodes" {
+  name = "${var.cluster_name}-nodes-role"
+
+  assume_role_policy = data.aws_iam_policy_document.eks_nodes_assume.json
+}
+
+data "aws_iam_policy_document" "eks_nodes_assume" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "worker_node_policy" {
+  role       = aws_iam_role.eks_nodes.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "cni_policy" {
+  role       = aws_iam_role.eks_nodes.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "ecr_policy" {
+  role       = aws_iam_role.eks_nodes.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+resource "aws_eks_node_group" "general" {
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "general"
+  node_role_arn   = aws_iam_role.eks_nodes.arn
+  subnet_ids = [
+    aws_subnet.private_a.id,
+    aws_subnet.private_b.id
+  ]
+
+  instance_types = var.general_instance_types
+
+  scaling_config {
+    desired_size = var.general_desired_size
+    min_size     = var.general_min_size
+    max_size     = var.general_max_size
+  }
+}
+resource "aws_eks_node_group" "gpu" {
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "gpu"
+  node_role_arn   = aws_iam_role.eks_nodes.arn
+  subnet_ids = [
+    aws_subnet.private_a.id,
+    aws_subnet.private_b.id
+  ]
+
+  instance_types = var.gpu_instance_types
+
+  scaling_config {
+    desired_size = var.gpu_desired_size
+    min_size     = var.gpu_min_size
+    max_size     = var.gpu_max_size
+  }
+
+  taint {
+    key    = "gpu"
+    value  = "true"
+    effect = "NO_SCHEDULE"
+  }
+}
