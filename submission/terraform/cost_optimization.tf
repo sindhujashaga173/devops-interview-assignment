@@ -1,20 +1,5 @@
-# cost_optimization.tf — Cost Optimization Resources
-#
-# TASK: Review data/aws_cost_report.json and implement cost-saving measures.
-#
-# Requirements:
-#   1. Analyze the cost report and identify the top savings opportunities
-#   2. Implement Terraform resources that address the findings, such as:
-#      - S3 lifecycle policies for tiered storage
-#      - Spot/mixed instance configurations for node groups
-#      - Right-sizing recommendations implemented as resource changes
-#   3. Add a comment block at the top explaining your cost analysis:
-#      - Current monthly cost and top cost drivers
-#      - Proposed changes and estimated savings
-#      - Any trade-offs or risks
 
-############################################################
-# --- Your cost analysis ---
+# --- My cost analysis ---
 #
 # Current Monthly Cost: ~$4,850
 #
